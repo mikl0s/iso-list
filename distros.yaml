@@ -12,6 +12,10 @@ distributions:
     URL: https://mirrors.edge.kernel.org/linuxmint/stable/ # Example structure might vary! Check actual mirror
     Extension: 'linuxmint-*-cinnamon-64bit.iso'
 
+  - Name: FreeBSD latest release
+    URL: https://www.freebsd.org/where/ # Example structure might vary! Check actual mirror
+    Extension: '*-RELEASE-amd64-bootonly.iso'
+
   # Add more distributions following the pattern
   # - Name: Fedora Workstation
   #   URL: https://download.fedoraproject.org/pub/fedora/linux/releases/39/Workstation/x86_64/iso/ # Example URL structure
