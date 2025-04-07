@@ -6,8 +6,8 @@
     },
     "Ubuntu Server 24.04 LTS": {
         "url": "https://releases.ubuntu.com/24.04.2/ubuntu-24.04.2-live-server-amd64.iso",
-        "hash_type": null,
-        "hash_value": null
+        "hash_type": "SHA256",
+        "hash_value": "d6dab0c3a657988501b4bd76f1297c053df710e06e0c3aece60dead24f270b4d"
     },
     "Linux Mint Cinnamon (Latest)": {
         "url": "https://mirrors.edge.kernel.org/linuxmint/stable/22.1/linuxmint-22.1-cinnamon-64bit.iso",
