@@ -1,6 +1,6 @@
 {
-    "Debian 12 Netinst (Latest)": null,
-    "Ubuntu Server LTS (24.04)": null,
+    "Debian 12 Netinst (Latest)": "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-12.10.0-amd64-netinst.iso",
+    "Ubuntu Server 24.04 LTS": "https://releases.ubuntu.com/24.04.2/ubuntu-24.04.2-live-server-amd64.iso",
     "Linux Mint Cinnamon (Latest)": "https://mirrors.edge.kernel.org/linuxmint/stable/22.1/linuxmint-22.1-cinnamon-64bit.iso",
     "FreeBSD latest release": "https://download.freebsd.org/releases/amd64/amd64/ISO-IMAGES/14.2/FreeBSD-14.2-RELEASE-amd64-bootonly.iso"
 }
