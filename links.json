@@ -1,6 +1,22 @@
 {
-    "Debian 12 Netinst (Latest)": "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-12.10.0-amd64-netinst.iso",
-    "Ubuntu Server 24.04 LTS": "https://releases.ubuntu.com/24.04.2/ubuntu-24.04.2-live-server-amd64.iso",
-    "Linux Mint Cinnamon (Latest)": "https://mirrors.edge.kernel.org/linuxmint/stable/22.1/linuxmint-22.1-cinnamon-64bit.iso",
-    "FreeBSD latest release": "https://download.freebsd.org/releases/amd64/amd64/ISO-IMAGES/14.2/FreeBSD-14.2-RELEASE-amd64-bootonly.iso"
+    "Debian 12 Netinst (Latest)": {
+        "url": "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-12.10.0-amd64-netinst.iso",
+        "hash_type": "SHA512",
+        "hash_value": "cb089def0684fd93c9c2fbe45fd16ecc809c949a6fd0c91ee199faefe7d4b82b64658a264a13109d59f1a40ac3080be2f7bd3d8bf3e9cdf509add6d72576a79b"
+    },
+    "Ubuntu Server 24.04 LTS": {
+        "url": "https://releases.ubuntu.com/24.04.2/ubuntu-24.04.2-live-server-amd64.iso",
+        "hash_type": null,
+        "hash_value": null
+    },
+    "Linux Mint Cinnamon (Latest)": {
+        "url": "https://mirrors.edge.kernel.org/linuxmint/stable/22.1/linuxmint-22.1-cinnamon-64bit.iso",
+        "hash_type": "SHA256",
+        "hash_value": "ccf482436df954c0ad6d41123a49fde79352ca71f7a684a97d5e0a0c39d7f39f"
+    },
+    "FreeBSD latest release": {
+        "url": "https://download.freebsd.org/releases/amd64/amd64/ISO-IMAGES/14.2/FreeBSD-14.2-RELEASE-amd64-bootonly.iso",
+        "hash_type": "SHA512",
+        "hash_value": "35a76364e2ea5437ce004c4f49619723a77ce0eb5dec84336b2b062f7697005cd33608b8bce67e96f91a4095ebb9584c665af1d609f79e70fbae298a26747473"
+    }
 }
