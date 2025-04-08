@@ -1,0 +1,129 @@
+#!/bin/sh
+# 
+# Copyright (c) 2023, 2024 Mattie Behrens.
+# 
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject
+# to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+# IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR
+# ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+# CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+#
+
+# Color support from portable-color <https://mattiebee.dev/portable-color>
+
+_try_color() {
+	[ -n "${NO_COLOR}" ] && return 1
+	[ -n "${CLICOLOR_FORCE}" ] && return 0
+	test -t 1 || return 1
+	[ -n "${CLICOLOR}" ] && return 0
+	return 0
+}
+setup_color() {
+	TPUT=$(which tput 2>/dev/null) && _try_color || TPUT=true
+}
+_qtput() {
+	[ -z "${TPUT}" ] && return 0 # if not set up, don't do anything
+	"${TPUT}" "$@" 2>/dev/null || true
+}
+_twrap() {
+	output="$1"
+	shift
+	_qtput "$@"
+	printf %s "$output"
+	_qtput sgr0
+}
+bold() { _twrap "$1" bold; }
+red() { _twrap "$1" setaf 1; }
+green() { _twrap "$1" setaf 2; }
+blue() { _twrap "$1" setaf 4; }
+
+print_task() { echo "$(green "==>") $(bold "$@")"; }
+print_subtask() { echo "$(blue "==>") $(bold "$@")"; }
+
+set -e
+setup_color
+
+if [ -z "$1" ] || [ "$1" = "-h" ]; then
+	echo "$(red "Usage:") $(basename "$0") ESD"
+	exit 0
+fi
+
+check_tool() {
+	if ! which "$1" >/dev/null; then
+		echo "$(red "Error:") wimlib tools not found"
+		exit 1
+	fi
+}
+check_tool wiminfo
+check_tool wimapply
+check_tool wimexport
+
+esd="$1"
+
+if [ ! -f "${esd}" ]; then
+	echo "$(red "Error:") ${esd} not found"
+	exit 2
+fi
+
+tmpdir=$(mktemp -d)
+
+__cleanup() {
+	print_task "Cleaning up $(green "${tmpdir}")"
+	rm -rf "${tmpdir}"
+}
+trap __cleanup EXIT
+
+print_task "Exporting images from $(green "${esd}")"
+
+image_count=$(wiminfo "${esd}" --header | grep '^Image Count' | cut -d= -f 2)
+if ! [ "${image_count}" -gt 0 ] 2>/dev/null; then
+	echo "$(red "Error:") could not get ${esd} image count"
+	exit 3
+fi
+echo "Found ${image_count} images."
+
+print_subtask "Exporting image 1"
+wimapply "${esd}" 1 "${tmpdir}"
+
+print_subtask "Exporting image 2"
+wimexport "${esd}" 2 \
+	"${tmpdir}/sources/boot.wim" \
+	--compress=LZX --chunk-size=32K
+
+print_subtask "Exporting image 3"
+wimexport "${esd}" 3 \
+	"${tmpdir}/sources/boot.wim" \
+	--compress=LZX --chunk-size=32K --boot
+
+for index in $(seq 4 "${image_count}"); do
+	print_subtask "Exporting image ${index}"
+	wimexport "${esd}" "${index}" \
+		"${tmpdir}/sources/install.esd" \
+		--compress=LZMS --chunk-size 128K --recompress
+done
+
+basename="$(basename "${esd}" .esd)"
+iso="${basename}.iso"
+
+rm -f "${iso}"
+print_task "Creating ${iso}"
+hdiutil makehybrid \
+	-o "${iso}" \
+	-iso -udf \
+	-hard-disk-boot -eltorito-boot "${tmpdir}/efi/microsoft/boot/efisys.bin" \
+	-iso-volume-name ESD_ISO \
+	-udf-volume-name ESD-ISO \
+	"${tmpdir}"

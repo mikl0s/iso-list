@@ -1,0 +1,228 @@
+#!/bin/sh
+
+# Exit immediately if a command exits with a non-zero status.
+set -e
+
+# --- Configuration ---
+name="download-windows-esd"
+cache_dir="${XDG_CACHE_HOME:-${HOME}/.cache}/${name}"
+
+# --- Functions ---
+
+# Function to ensure the products.xml metadata file is downloaded and extracted
+download_products_xml() {
+    echo "Ensuring products.xml exists in ${cache_dir}..." # Add logging
+    mkdir -p "${cache_dir}"
+    local xml_path="${cache_dir}/products.xml" # Use local var for path
+    local cab_path="${cache_dir}/products.cab"
+
+    # Check if XML is missing, older than CAB, or CAB is older than 1 day (1440 minutes)
+    # This logic aims to refresh reasonably often but not on every run.
+    if [ ! -f "${xml_path}" ] || { [ -f "${cab_path}" ] && [ "${cab_path}" -nt "${xml_path}" ]; } || [ -z "$(find "${cab_path}" -mmin -1440 2>/dev/null)" ]; then
+        echo "products.xml missing, older than cab, or cab older than 1 day. Fetching/extracting..."
+        local lastwd="$(pwd)" # Store current dir before changing
+        cd "${cache_dir}" # Change to cache dir *before* download/extract
+
+        echo "Downloading products.cab..."
+        # Use curl to download, handle redirects, silent on success, fail on error
+        curl \
+            --location \
+            --silent \
+            --show-error \
+            --fail \
+            --output products.cab \
+            --time-cond products.cab \
+            'https://go.microsoft.com/fwlink/?LinkId=2156292' || { echo "Error: curl download failed! (Check network or URL)" >&2; cd "${lastwd}"; return 1; }
+
+        # Update timestamp just in case curl didn't download but time-cond passed
+        touch products.cab
+
+        echo "Extracting products.xml..."
+        # Use cabextract, check for errors
+        cabextract products.cab || { echo "Error: cabextract failed! (Is cabextract installed?)" >&2; cd "${lastwd}"; return 1; }
+
+        # Verify that products.xml was actually extracted
+        if [ ! -f products.xml ]; then
+            echo "Error: products.xml not found after extraction!" >&2
+            cd "${lastwd}"
+            return 1
+        fi
+        echo "products.xml is ready in ${cache_dir}."
+        cd "${lastwd}" # Go back to original directory *after* successful download/extract
+    else
+         echo "Using existing products.xml from cache."
+    fi
+     # Indicate success by reaching the end without returning an error code
+     return 0
+}
+
+# Function to run XPath queries on the XML file
+# Takes XPath query string as $1 and XML file path as $2
+query() {
+    local xpath_query="$1"
+    local xml_file_path="$2"
+    # Check if XML file exists before querying
+    if [ ! -f "$xml_file_path" ]; then
+         echo "Error in query: XML file not found at $xml_file_path" >&2
+         return 1 # Return error code if file missing
+    fi
+    # Execute xpath command, redirecting stdin is often more robust than passing filename
+    # -q (quiet), -n (add newline after each result), -e (query)
+    xpath -q -n -e "$xpath_query" < "$xml_file_path" || { echo "Error: xpath query failed for '$xpath_query'" >&2; return 1; }
+    # Return success implicitly if xpath command succeeds
+}
+
+# Function to run XPath queries on XML content provided via standard input
+# Takes XPath query string as $1, expects XML content piped to it
+subquery() {
+    # Read from stdin, pipe to xpath
+    xpath -q -n -e "$1" || { echo "Error: xpath subquery failed for '$1'" >&2; return 1; }
+}
+
+
+# --- Specific query functions ---
+
+languages() {
+    query "//LanguageCode/text()" "${cache_dir}/products.xml" | sort | uniq
+}
+
+editions() {
+    query "//File[LanguageCode='$1']/Edition/text()" "${cache_dir}/products.xml" | sort | uniq
+}
+
+architectures() {
+    query "//File[LanguageCode='$1'][Edition='$2']/Architecture/text()" "${cache_dir}/products.xml" | sort
+}
+
+# Gets the entire <File> XML node matching criteria
+file_xml() {
+    query "//File[LanguageCode='$1'][Edition='$2'][Architecture='$3']" "${cache_dir}/products.xml"
+}
+
+# Extracts specific fields from a given <File> XML node content
+filename() { subquery "//FileName/text()" "$1"; }
+url() { subquery "//FilePath/text()" "$1"; }
+sha1() { subquery "//Sha1/text()" "$1"; }
+
+
+# --- Usage function ---
+usage() {
+    cat <<EOT >&2
+usage:
+    $0 languages
+        Lists available language codes.
+
+    $0 editions LANGUAGE
+        Lists available editions for a language.
+
+    $0 architectures LANGUAGE EDITION
+        Lists available architectures for a language and edition.
+
+    $0 download LANGUAGE EDITION ARCHITECTURE
+        Downloads the specified ESD file to the current directory.
+
+    $0 shasum LANGUAGE EDITION ARCHITECTURE
+        Outputs the SHA-1 checksum and filename for the specified ESD.
+
+    $0 url LANGUAGE EDITION ARCHITECTURE
+        Outputs the direct download URL for the specified ESD.
+EOT
+}
+
+
+# --- Main Execution Flow ---
+
+# Step 1: Ensure the metadata is available
+if ! download_products_xml; then
+    echo "Error preparing products.xml. Exiting." >&2
+    exit 4 # Use a distinct exit code for metadata failure
+fi
+
+# Step 2: Process command-line arguments using a case statement
+case "$1" in
+  download)
+    # Check for required arguments
+    if [ -z "$4" ]; then usage; exit 1; fi
+
+    # Get the XML snippet for the specific file
+    file_xml_content="$(file_xml "$2" "$3" "$4")"
+    if [ -z "$file_xml_content" ]; then echo "Error: No matching file found in XML for $2 $3 $4" >&2; exit 6; fi # Specific exit code
+
+    # Extract details
+    filename="$(filename "${file_xml_content}")"
+    url="$(url "${file_xml_content}")"
+    expected_sha1="$(sha1 "${file_xml_content}")"
+
+    echo "Downloading ${filename} from ${url}..."
+    # Use curl to download, show progress, resume, fail on error
+    curl \
+        --continue-at - \
+        --fail \
+        --location \
+        --progress-bar \
+        --remote-name \
+        --remote-time \
+        "${url}" || { echo "Error: curl download command failed!" >&2; exit 7; } # Specific exit code
+
+    echo "Verifying SHA1 checksum..."
+    actual_sha1="$(sha1sum "${filename}" | cut -b -40)" # Use sha1sum standard utility
+    if [ "${expected_sha1}" != "${actual_sha1}" ]; then
+        echo "Error: SHA-1 mismatch!" >&2
+        echo "Expected: ${expected_sha1}" >&2
+        echo "Actual:   ${actual_sha1}" >&2
+        exit 5 # Specific exit code
+    fi
+    echo "SHA1 OK. Download complete: ${filename}"
+    ;; # End of download case
+
+  shasum)
+    # Check for required arguments
+    if [ -z "$4" ]; then usage; exit 1; fi
+
+    # Get the XML snippet
+    file_xml_content="$(file_xml "$2" "$3" "$4")"
+    if [ -z "$file_xml_content" ]; then echo "Error: No matching file found in XML for $2 $3 $4" >&2; exit 6; fi
+
+    # Extract details
+    filename="$(filename "${file_xml_content}")"
+    expected_sha1="$(sha1 "${file_xml_content}")"
+
+    # Output in shasum format
+    echo "${expected_sha1} *${filename}" # Use '*' for binary mode often expected by sha*sum -c
+    ;; # End of shasum case
+
+  url)
+    # Check for required arguments
+    if [ -z "$4" ]; then usage; exit 1; fi
+
+    # Get the XML snippet
+    file_xml_content="$(file_xml "$2" "$3" "$4")"
+    if [ -z "$file_xml_content" ]; then echo "Error: No matching file found in XML for $2 $3 $4" >&2; exit 6; fi
+
+    # Extract and print URL
+    url="$(url "${file_xml_content}")"
+    echo "${url}"
+    ;; # End of url case
+
+  languages)
+    languages
+    ;; # End of languages case
+
+  editions)
+    if [ -z "$2" ]; then usage; exit 1; fi
+    editions "$2"
+    ;; # End of editions case
+
+  architectures)
+    if [ -z "$3" ]; then usage; exit 1; fi
+    architectures "$2" "$3"
+    ;; # End of architectures case
+
+  *) # Default case for unknown commands
+    usage
+    exit 1
+    ;; # End of default case
+
+esac # <<< --- THIS WAS MISSING ---
+
+# Implicit exit 0 if successful completion

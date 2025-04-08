@@ -1,42 +1,56 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+# --- Imports ---
 import configparser
 import requests
 import yaml
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 import fnmatch # For wildcard matching like *.iso
 import sys
 import os
+import shutil # For checking command existence
 from operator import itemgetter
 import re
-import json # <-- Import the json module
+import json
+import argparse
+import subprocess
+# import hashlib # No longer needed for WindowsMode AWK approach
 
 # --- Configuration Loading ---
-# (No changes needed here)
-def load_config(config_file='iso-manager.conf'):
+def load_config(config_file='iso-list.conf'):
     """Loads configuration from the .conf file."""
     config = configparser.ConfigParser()
+    config_data = {'settings': {}, 'scripts': {}}
     if not os.path.exists(config_file):
-        print(f"Error: Configuration file '{config_file}' not found.")
-        print(f"Please create '{config_file}' with a [Settings] section and a 'yaml_source' key.")
-        sys.exit(1)
+        print(f"Warning: Config file '{config_file}' not found. Using defaults.")
+        return config_data
+
     try:
         config.read(config_file)
-        if 'Settings' not in config or 'yaml_source' not in config['Settings']:
-            print(f"Error: Missing [Settings] section or 'yaml_source' key in '{config_file}'.")
-            sys.exit(1)
-        return config['Settings']['yaml_source']
+        if 'Settings' in config and 'yaml_source' in config['Settings']:
+            config_data['settings']['yaml_source'] = config['Settings']['yaml_source']
+        else:
+             print(f"Warning: Missing [Settings] or 'yaml_source' in '{config_file}'.")
+
+        # Only need the download script path now for WindowsMode Ensure XML step
+        if 'ExternalScripts' in config:
+            config_data['scripts']['download'] = config['ExternalScripts'].get('download_script_path')
+
+        return config_data
     except configparser.Error as e:
-        print(f"Error parsing config file '{config_file}': {e}")
-        sys.exit(1)
+        print(f"Error parsing config file '{config_file}': {e}. Using defaults.")
+        return config_data # Return empty on parse error
 
 # --- YAML Data Loading ---
-# (No changes needed here)
 def load_yaml_data(source):
     """Loads YAML data from a URL or local file."""
+    source = source or 'distros.yaml' # Default to local file if not specified
     try:
-        if source.startswith('http://') or source.startswith('https://'):
+        if source.startswith(('http://', 'https://')):
             print(f"Fetching YAML data from URL: {source}")
-            headers = {'User-Agent': 'ISO-List-Script/1.1'}
+            headers = {'User-Agent': 'ISO-List-Script/1.15'} # Version bump
             response = requests.get(source, timeout=15, headers=headers)
             response.raise_for_status()
             yaml_content = response.text
@@ -47,238 +61,452 @@ def load_yaml_data(source):
                 sys.exit(1)
             with open(source, 'r', encoding='utf-8') as f:
                 yaml_content = f.read()
-
         data = yaml.safe_load(yaml_content)
         if not data or 'distributions' not in data:
-             print(f"Error: YAML data is empty or missing the 'distributions' key.")
+             print(f"Error: YAML data empty or missing 'distributions'.")
              sys.exit(1)
         if not isinstance(data['distributions'], list):
-             print(f"Error: The 'distributions' key in YAML must contain a list.")
+             print(f"Error: YAML 'distributions' must be a list.")
              sys.exit(1)
         return data['distributions']
-
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching YAML from URL '{source}': {e}")
-        sys.exit(1)
-    except yaml.YAMLError as e:
-        print(f"Error parsing YAML data from '{source}': {e}")
-        sys.exit(1)
-    except IOError as e:
-         print(f"Error reading local YAML file '{source}': {e}")
-         sys.exit(1)
     except Exception as e:
-        print(f"An unexpected error occurred while loading YAML: {e}")
+        print(f"Error loading/parsing YAML from '{source}': {e}")
         sys.exit(1)
 
 
 # --- Helper function for sorting version strings ---
-# (No changes needed here)
 def sort_key_version(item_dict):
-    """
-    Creates a sort key for version strings (like '21.10/', '22/').
-    Extracts numbers and converts them to tuples of integers.
-    Handles the trailing '/' if present.
-    """
+    """Creates a sort key for version strings."""
     version_str = item_dict.get('name', '').strip('/')
     parts = re.findall(r'\d+', version_str)
     try:
-        return tuple(map(int, parts))
+        return tuple(map(int, parts)) if parts else (-1,)
     except ValueError:
-        return tuple(0 for _ in parts) if parts else (0,)
+        return (-1,) * len(parts) if parts else (-1,)
 
+# --- Helper function to check multiple VersionMatch criteria ---
+def check_version_match(item_name, version_match_criteria):
+    """Checks if item name contains all specified version match criteria."""
+    # Treat None or "" as no filter
+    if version_match_criteria is None or version_match_criteria == "":
+        return True
+    if isinstance(version_match_criteria, str):
+        return version_match_criteria in item_name
+    elif isinstance(version_match_criteria, list):
+        if not version_match_criteria: return True # Empty list matches all
+        try:
+            return all(str(criterion) in item_name for criterion in version_match_criteria)
+        except TypeError:
+             print(f"  Warning: Non-string item in VersionMatch list: {version_match_criteria}. Check YAML.")
+             return False
+    else:
+        # Handle unexpected type for VersionMatch
+        print(f"  Warning: Unexpected type for VersionMatch: {type(version_match_criteria)}. Ignoring filter.")
+        return True # Default to passing if type is wrong
 
-# --- Core ISO Finding Logic ---
-# (No changes needed here)
-def find_latest_iso(distro_info):
+# --- Helper function to infer hash type ---
+def infer_hash_type(pattern_or_filename, found_hash_value=None):
     """
-    Finds the latest ISO link for a given distribution.
-    Handles direct links and traversing into the latest version subdirectory if needed.
+    Infers hash type from pattern/filename first, then hash length.
+    Returns common algorithm names (e.g., 'SHA256', 'MD5') or None.
+    """
+    if pattern_or_filename:
+        name_lower = pattern_or_filename.lower()
+        # Check for explicit algorithm names
+        if 'sha512' in name_lower: return 'SHA512'
+        if 'sha256' in name_lower: return 'SHA256'
+        if 'sha1' in name_lower: return 'SHA1'
+        if 'md5' in name_lower: return 'MD5'
+
+    # Fallback: Check length of the found hash value
+    if found_hash_value:
+        hash_len = len(found_hash_value.strip()) # Strip whitespace just in case
+        if hash_len == 128: return 'SHA512'
+        if hash_len == 96: return 'SHA384'
+        if hash_len == 64: return 'SHA256'
+        if hash_len == 56: return 'SHA224'
+        if hash_len == 40: return 'SHA1'
+        if hash_len == 32: return 'MD5'
+
+    print(f"    Could not infer hash type from pattern '{pattern_or_filename}' or hash length.")
+    return None # Cannot determine
+
+# --- Helper function to parse hash file content ---
+def parse_hash_file(hash_content, target_iso_filename):
+    """
+    Parses standard checksum file formats (like sha256sum output)
+    to find the hash for a specific target filename.
+    """
+    print(f"    Parsing hash file content for '{target_iso_filename}'...")
+    hash_value = None
+    line_regex = re.compile(r'^([a-fA-F0-9]{32,})\s+([* ]?)(.*)')
+
+    lines = hash_content.splitlines()
+    for line_num, line in enumerate(lines):
+        line = line.strip()
+        if not line or line.startswith('#'): continue
+
+        match = line_regex.match(line)
+        if match:
+            potential_hash, separator, filename_part = match.groups()
+            if filename_part == target_iso_filename or filename_part.endswith('/' + target_iso_filename):
+                 print(f"      Found hash for '{target_iso_filename}' on line {line_num+1}: {potential_hash}")
+                 hash_value = potential_hash; break
+
+        elif '=' in line and '(' in line and ')' in line:
+             parts = line.split('=', 1)
+             if len(parts) == 2:
+                 left_part, potential_hash = parts[0].strip(), parts[1].strip()
+                 name_match = re.search(r'\((.*?)\)', left_part)
+                 if name_match:
+                      filename_in_parens = name_match.group(1)
+                      if filename_in_parens == target_iso_filename and re.match(r'^[a-fA-F0-9]{32,}$', potential_hash):
+                           print(f"      Found hash (alt format) for '{target_iso_filename}' on line {line_num+1}: {potential_hash}")
+                           hash_value = potential_hash; break
+
+    if not hash_value:
+        print(f"    Hash for '{target_iso_filename}' not found within the hash file content.")
+
+    return hash_value
+
+# --- Core ISO/ESD Finding Logic (Web Scraping - find_iso_web) ---
+def find_iso_web(distro_info):
+    """
+    Finds the ISO/ESD link AND its hash via web scraping.
+    Respects VersionMatch criteria. Avoids aliases only if VersionMatch is None or "".
+    Returns dict {'url': iso_url, 'hash_type': type, 'hash_value': val} or None.
     """
     name = distro_info.get('Name', 'N/A')
     base_url = distro_info.get('URL')
-    extension_pattern = distro_info.get('Extension', '*.iso')
+    extension_pattern = distro_info.get('Extension') # Required in YAML
+    version_match_input = distro_info.get('VersionMatch')
+    hash_match_pattern = distro_info.get('HashMatch')
 
+    # --- Validation ---
     if not base_url or not isinstance(base_url, str) or not base_url.strip():
-        print(f"\nSkipping: Invalid or missing 'URL' for distribution '{name}'.")
+        print(f"\nSkipping: Invalid/missing 'URL' for '{name}'.")
         return None
-    if not isinstance(extension_pattern, str):
-        print(f"\nSkipping: Invalid 'Extension' format for distribution '{name}'.")
+    if not extension_pattern or not isinstance(extension_pattern, str):
+        print(f"\nSkipping: Invalid or missing 'Extension' for '{name}'. Must be string pattern.")
         return None
+    if version_match_input is not None and version_match_input != "" and not isinstance(version_match_input, (str, list)):
+        print(f"\nWarning: Invalid type for 'VersionMatch' in '{name}'. Ignoring filter.")
+        version_match_input = None
+    if hash_match_pattern is not None and not isinstance(hash_match_pattern, str):
+         print(f"\nWarning: Invalid type for 'HashMatch' in '{name}'. Ignoring hash search.")
+         hash_match_pattern = None
 
-    print(f"\nProcessing: {name}")
+    print(f"\nProcessing (Web): {name}")
     print(f"  Base URL: {base_url}")
     print(f"  Looking for pattern: {extension_pattern}")
+    print(f"  VersionMatch criteria: {version_match_input}")
+    if hash_match_pattern: print(f"  Looking for Hash pattern: {hash_match_pattern}")
 
     session = requests.Session()
-    session.headers.update({'User-Agent': 'ISO-List-Script/1.1 (+https://github.com/your_repo)'})
+    session.headers.update({'User-Agent': 'ISO-List-Script/1.15 (+https://github.com/mikl0s/iso-list)'}) # Version bump
+
+    selected_file_url = None; selected_filename = None
+    file_directory_url = None; directory_links = []
 
     try:
-        # --- Attempt 1: Look for ISO directly in the base URL ---
-        print(f"  Attempt 1: Checking base URL directly: {base_url}")
+        # --- Attempt 1: Look for file directly in the base URL ---
+        print(f"  Attempt 1: Checking base URL: {base_url}")
         response = session.get(base_url, timeout=20)
         response.raise_for_status()
         content_type = response.headers.get('Content-Type', '').lower()
-        if 'html' not in content_type:
-             print(f"  Warning: Content-Type at {base_url} is '{content_type}', not HTML. Parsing might fail.")
+        if 'html' not in content_type: print(f"  Warn: Non-HTML at {base_url}")
 
-        soup = BeautifulSoup(response.text, 'html.parser')
-        links = soup.find_all('a', href=True)
+        soup = BeautifulSoup(response.text, 'html.parser'); links = soup.find_all('a', href=True)
+        directory_links = links; file_directory_url = base_url
 
-        matching_files = []
+        potential_files = []
         for link in links:
             href = link['href']
             if not href or href.startswith(('../', '/', '?', '#', 'mailto:')) or '://' in href:
-                 if not href.startswith(base_url):
-                    continue
+                 if not href.startswith(base_url): continue
             filename = href.split('/')[-1]
-            if fnmatch.fnmatch(filename, extension_pattern):
+            if fnmatch.fnmatch(filename, extension_pattern) and \
+               check_version_match(filename, version_match_input):
                 full_url = urljoin(base_url, href)
-                matching_files.append({'filename': filename, 'url': full_url, 'name': filename})
+                potential_files.append({'filename': filename, 'url': full_url, 'name': filename})
 
-        if matching_files:
-            matching_files.sort(key=sort_key_version, reverse=True)
-            latest_file = matching_files[0]
-            print(f"  Found direct match: {latest_file['filename']}")
-            if not latest_file['url'].startswith(('http://', 'https://')):
-                 print(f"  Error: Constructed URL '{latest_file['url']}' is not absolute.")
-                 return None
-            return latest_file['url']
+        if potential_files:
+            potential_files.sort(key=sort_key_version, reverse=True)
+            selected_file = potential_files[0]
+            print(f"  Found matching file directly: {selected_file['filename']}")
+            if selected_file['url'].startswith(('http://', 'https://')):
+                selected_file_url = selected_file['url']; selected_filename = selected_file['filename']
+            else: print(f"  Error: Constructed URL '{selected_file['url']}' is not absolute."); return None
 
-        # --- Attempt 2: If no direct ISO match, look for version directories ---
-        print(f"  No direct ISO match found. Attempt 2: Looking for version directories...")
-        version_dirs = []
-        for link in links:
-            href = link['href']
-            if href.endswith('/') and href != '../' and not href.startswith(('?', '#')):
-                if re.search(r'\d', href):
-                    dir_name = href
-                    version_dirs.append({'name': dir_name, 'url': urljoin(base_url, href)})
+        # --- Attempt 2 & 3: Only if file not found directly ---
+        if selected_file_url is None:
+            print(f"  Attempt 2: Looking for version directories...")
+            potential_dirs = []
+            for link in links:
+                href = link['href']
+                if href.endswith('/') and href != '../' and not href.startswith(('?', '#')):
+                    dir_name = href.strip('/')
+                    if check_version_match(dir_name, version_match_input):
+                        # Use effective version match to decide if sanity check needed
+                        effective_vm = version_match_input if version_match_input else None
+                        if effective_vm is not None or re.search(r'\d', dir_name) or len(dir_name) < 15 :
+                             potential_dirs.append({'name': dir_name, 'url': urljoin(base_url, href)})
 
-        if not version_dirs:
-            print("  No suitable version directories found at the base URL.")
-            return None
+            if not potential_dirs: print("  No suitable version directories found."); return None
+            potential_dirs.sort(key=sort_key_version, reverse=True)
+            print(f"  Found {len(potential_dirs)} potential dirs matching criteria.")
 
-        version_dirs.sort(key=sort_key_version, reverse=True)
-        latest_dir_info = version_dirs[0]
-        latest_dir_url = latest_dir_info['url']
-        print(f"  Found latest potential version directory: {latest_dir_info['name']} -> {latest_dir_url}")
+            target_dir_info = None
+            effective_vm = version_match_input if version_match_input else None
+            if effective_vm is None:
+                print(f"  Selecting best directory (No VersionMatch, avoiding aliases)...")
+                avoid = ["latest", "current", "stable"]
+                for pd in potential_dirs:
+                    last = pd.get('name', '').rsplit('/', 1)[-1] or pd.get('name', '')
+                    if last.lower() in avoid: print(f"    Skip '{pd['name']}' (alias '{last}')."); continue
+                    print(f"    Select candidate (non-alias): '{pd['name']}'"); target_dir_info = pd; break
+                if target_dir_info is None and potential_dirs: print("  WARN: Only alias dirs found. Fallback."); target_dir_info = potential_dirs[0]
+            else:
+                print(f"  Selecting highest version dir strictly matching VersionMatch...")
+                if potential_dirs: target_dir_info = potential_dirs[0]; print(f"    Select candidate (strict match): '{target_dir_info['name']}'")
+            if target_dir_info is None: print("  Failed to select target directory."); return None
 
-        # --- Attempt 3: Fetch the latest version directory and look for ISOs there ---
-        print(f"  Attempt 3: Checking inside directory: {latest_dir_url}")
-        response_subdir = session.get(latest_dir_url, timeout=20)
-        response_subdir.raise_for_status()
-        content_type_subdir = response_subdir.headers.get('Content-Type', '').lower()
-        if 'html' not in content_type_subdir:
-             print(f"  Warning: Content-Type at {latest_dir_url} is '{content_type_subdir}', not HTML. Parsing might fail.")
+            target_dir_url = target_dir_info['url']
+            print(f"  Selected target directory: {target_dir_info['name']}/ -> {target_dir_url}")
 
-        soup_subdir = BeautifulSoup(response_subdir.text, 'html.parser')
-        links_subdir = soup_subdir.find_all('a', href=True)
+            print(f"  Attempt 3: Checking inside: {target_dir_url}")
+            try: resp_subdir = session.get(target_dir_url, timeout=20); resp_subdir.raise_for_status()
+            except requests.exceptions.RequestException as e_sub: print(f"  ERR fetch dir '{target_dir_url}': {e_sub}"); return None
+            file_directory_url = target_dir_url
+            soup_subdir = BeautifulSoup(resp_subdir.text, 'html.parser'); links_subdir = soup_subdir.find_all('a', href=True)
+            directory_links = links_subdir
 
-        matching_files_subdir = []
-        for link in links_subdir:
-            href = link['href']
-            if not href or href.startswith(('../', '/', '?', '#', 'mailto:')) or '://' in href:
-                 if not href.startswith(latest_dir_url):
-                    continue
-            filename = href.split('/')[-1]
-            if fnmatch.fnmatch(filename, extension_pattern):
-                full_url = urljoin(latest_dir_url, href)
-                matching_files_subdir.append({'filename': filename, 'url': full_url, 'name': filename})
+            matching_files_subdir = []
+            for link in links_subdir:
+                href = link['href']
+                if not href or href.startswith(('../', '/', '?', '#', 'mailto:')) or '://' in href:
+                     if not href.startswith(target_dir_url): continue
+                filename = href.split('/')[-1]
+                if fnmatch.fnmatch(filename, extension_pattern) and check_version_match(filename, version_match_input):
+                     full_url = urljoin(target_dir_url, href); matching_files_subdir.append({'filename': filename, 'url': full_url, 'name': filename})
+            if not matching_files_subdir: print(f"  No files matching criteria found in dir '{target_dir_info['name']}'."); return None
+            matching_files_subdir.sort(key=sort_key_version, reverse=True)
+            selected_file_subdir = matching_files_subdir[0]; print(f"  Selected final file: {selected_file_subdir['filename']}")
+            if selected_file_subdir['url'].startswith(('http://', 'https://')):
+                 selected_file_url = selected_file_subdir['url']; selected_filename = selected_file_subdir['filename']
+            else: print(f"  ERR: Bad URL '{selected_file_subdir['url']}'"); return None
 
-        if not matching_files_subdir:
-            print(f"  No files matching pattern '{extension_pattern}' found in directory '{latest_dir_info['name']}'.")
-            return None
-
-        matching_files_subdir.sort(key=sort_key_version, reverse=True)
-        latest_file_subdir = matching_files_subdir[0]
-        print(f"  Selected latest from subdirectory: {latest_file_subdir['filename']}")
-        if not latest_file_subdir['url'].startswith(('http://', 'https://')):
-             print(f"  Error: Constructed URL '{latest_file_subdir['url']}' is not absolute.")
-             return None
-        return latest_file_subdir['url']
-
-    except requests.exceptions.Timeout:
-        print(f"  Error: Timeout occurred during request.")
-        return None
-    except requests.exceptions.RequestException as e:
-        print(f"  Error during network request: {e}")
-        return None
-    except Exception as e:
-        print(f"  An unexpected error occurred while processing '{name}': {e}")
-        # import traceback
-        # traceback.print_exc()
-        return None
+        # --- Hash File Search (Common path) ---
+        if selected_file_url:
+             result_data = {'url': selected_file_url, 'hash_type': None, 'hash_value': None}
+             if hash_match_pattern and file_directory_url and directory_links:
+                 print(f"  Searching for hash file matching '{hash_match_pattern}' in {file_directory_url}...")
+                 found_hash_url = None; hash_file_name = None
+                 for link in directory_links:
+                     href = link['href']; hash_filename = href.split('/')[-1]
+                     if not href or href.startswith(('?', '#', 'mailto:', '../')): continue
+                     if '://' in href and not href.startswith(file_directory_url): continue
+                     if fnmatch.fnmatch(hash_filename, hash_match_pattern):
+                         found_hash_url = urljoin(file_directory_url, href); hash_file_name = hash_filename
+                         print(f"    Found hash file: {hash_filename} -> {found_hash_url}"); break
+                 if found_hash_url:
+                     try:
+                         print(f"    Fetching hash file: {found_hash_url}..."); resp_hash = session.get(found_hash_url, timeout=15); resp_hash.raise_for_status()
+                         found_hash = parse_hash_file(resp_hash.text, selected_filename) # Use found filename
+                         if found_hash:
+                             result_data['hash_value'] = found_hash
+                             result_data['hash_type'] = infer_hash_type(hash_file_name or hash_match_pattern, found_hash)
+                             print(f"      Hash: {result_data['hash_value']} ({result_data['hash_type']})")
+                         else: print(f"    Hash for '{selected_filename}' not in '{found_hash_url}'.")
+                     except requests.exceptions.RequestException as e_h: print(f"    ERR fetch hash file: {e_h}")
+                     except Exception as e_p: print(f"    ERR parse hash file: {e_p}")
+                 else: print(f"  Hash file matching '{hash_match_pattern}' not found.")
+             else: print("  Hash search skipped.")
+             return result_data # Return final data
+        else: print("  Failed to determine file URL."); return None # Should have URL if we got here
+    except requests.exceptions.Timeout: print(f"  Error: Timeout occurred."); return None
+    except requests.exceptions.RequestException as e: error_details = f"URL: {e.request.url if e.request else 'N/A'}"; print(f"  Error during network request: {e} ({error_details})"); return None
+    except Exception as e: print(f"  An unexpected error occurred processing '{name}': {e}"); return None
     finally:
-        session.close()
+        if 'session' in locals() and session: session.close()
 
-# --- Main Execution (MODIFIED) ---
+
+# --- Function to get Windows ESD details via AWK on local XML ---
+def get_windows_esd_details_from_xml(distro_info, config_scripts):
+    """
+    Ensures products.xml is cached, then uses AWK to parse it based on
+    Language, Edition, Architecture criteria from distro_info.
+    Returns dict {'url': esd_url, 'hash_type': 'SHA1', 'hash_value': val} or None.
+    """
+    name = distro_info.get('Name', 'Windows ESD')
+    print(f"\nProcessing (WindowsMode - AWK Parse XML): {name}")
+
+    # Get Required Parameters
+    edition = distro_info.get('Edition'); language = distro_info.get('Language'); arch = distro_info.get('Architecture')
+    if not all([edition, language, arch]): print(f"  Error: Missing required parameters (Edition, Language, Architecture) for '{name}'."); return None
+    print(f"  Edition: {edition}"); print(f"  Language: {language}"); print(f"  Architecture: {arch}")
+
+    # Determine Script Path & Cache Path
+    script_name = "download-windows-esd"; default_download_script = script_name
+    download_script_cmd = config_scripts.get('download') or default_download_script
+    cache_dir = os.path.join(os.environ.get('XDG_CACHE_HOME', os.path.join(os.path.expanduser('~'), '.cache')), script_name)
+    xml_file_path = os.path.join(cache_dir, "products.xml")
+
+    # Check if download script exists
+    if not shutil.which(download_script_cmd): print(f"  Error: Download script '{download_script_cmd}' not found/executable."); return None
+
+    # Step 1: Ensure products.xml is cached
+    print(f"  Ensuring '{xml_file_path}' is up-to-date using '{download_script_cmd}'...")
+    try:
+        # Run script without args to trigger its internal cache check/update
+        update_proc = subprocess.run([download_script_cmd], capture_output=True, text=True, encoding='utf-8', check=False, timeout=60)
+        if not os.path.exists(xml_file_path):
+             print(f"  Error: '{xml_file_path}' not found after running update script.");
+             if update_proc.stderr: print(f"    Script Stderr: {update_proc.stderr.strip()}"); return None
+             return None # Exit if file doesn't exist
+        if update_proc.returncode != 0: print(f"  Warning: Update script exited code {update_proc.returncode}. Stderr: {update_proc.stderr.strip()}")
+        print(f"  '{xml_file_path}' should be ready.")
+    except Exception as e: print(f"  Unexpected error running update script: {e}"); return None
+
+    # Step 2: Prepare and Execute AWK Script
+    print(f"  Parsing '{xml_file_path}' with AWK...")
+    awk_script = r"""
+    BEGIN { FS=">"; RS="</File>"; # Field Separator = >, Record Separator = </File>
+            target_lang = "<LanguageCode>" lang "</LanguageCode>";
+            target_ed = "<Edition>" ed "</Edition>";
+            target_arch = "<Architecture>" arch "</Architecture>";
+            found=0;
+    }
+    # Check if record contains all criteria
+    $0 ~ target_lang && $0 ~ target_ed && $0 ~ target_arch {
+        # Extract fields using gsub to remove tags
+        f_name = $0; gsub(/.*<FileName>|<\/FileName>.*/, "", f_name);
+        f_path = $0; gsub(/.*<FilePath>|<\/FilePath>.*/, "", f_path);
+        f_sha1 = $0; gsub(/.*<Sha1>|<\/Sha1>.*/, "", f_sha1);
+        # Print results with prefixes
+        print "AWK_FileName:" f_name;
+        print "AWK_FilePath:" f_path;
+        print "AWK_Sha1:" f_sha1;
+        found=1;
+        exit; # Assume only one match needed
+    }
+    END { if (!found) { print "AWK_Error:No matching block found" > "/dev/stderr"; exit 1 } }
+    """
+
+    awk_command = ['awk', f'-vlang={language}', f'-ved={edition}', f'-varch={arch}', awk_script, xml_file_path]
+    extracted_data = {}
+    print(f"  Running AWK command...") # Command can be long, skip logging full command?
+    try:
+        awk_result = subprocess.run(awk_command, check=True, capture_output=True, text=True, encoding='utf-8', timeout=30)
+        print(f"    AWK Stdout:\n{awk_result.stdout.strip()}")
+        if awk_result.stderr: print(f"    AWK Stderr:\n{awk_result.stderr.strip()}")
+
+        if awk_result.stdout:
+            for line in awk_result.stdout.strip().splitlines():
+                if ':' in line: key, value = line.split(':', 1); extracted_data[key.strip()] = value.strip()
+            print(f"    Parsed AWK data: {extracted_data}")
+        else: print(f"    AWK command produced no output. No match found?"); return None
+    except Exception as e: print(f"  Error running AWK: {e}"); return None
+
+    # Step 4: Format Result
+    file_path_url = extracted_data.get('AWK_FilePath')
+    sha1_hash = extracted_data.get('AWK_Sha1')
+    if not file_path_url: print(f"  Error: Could not extract FilePath (URL) from AWK output."); return None
+
+    return {'url': file_path_url, 'hash_type': 'SHA1' if sha1_hash else None, 'hash_value': sha1_hash, 'source': 'WindowsMode_AWK'}
+
+
+# --- Git Command Function ---
+# (No changes needed)
+def run_git_commands(output_filename="links.json", branch="main"):
+    print("\n--- Attempting Git Operations ---")
+    try:
+        status_result = subprocess.run(['git', 'status', '--porcelain', output_filename], capture_output=True, text=True, check=False, encoding='utf-8')
+        if status_result.returncode != 0:
+             if "fatal: pathspec" in status_result.stderr and "did not match any files" in status_result.stderr: print(f"Info: '{output_filename}' not tracked/exists. Will add.")
+             else: print(f"Error checking git status: {status_result.stderr}"); return False
+        elif not status_result.stdout.strip() and os.path.exists(output_filename): print(f"No changes in '{output_filename}'. Nothing to commit."); return False
+    except FileNotFoundError: print("Error: 'git' command not found."); return False
+    except Exception as e: print(f"Unexpected error during git status check: {e}"); return False
+
+    print(f"Changes detected or file needs adding. Proceeding.")
+    commit_made = False
+    try:
+        print(f"Running: git add {output_filename}"); subprocess.run(['git', 'add', output_filename], check=True)
+        msg = f"Update {output_filename}"; print(f"Running: git commit -m \"{msg}\"")
+        commit_res = subprocess.run(['git', 'commit', '-m', msg], capture_output=True, text=True, check=False, encoding='utf-8')
+        if commit_res.returncode != 0:
+             if "nothing to commit" in commit_res.stdout.lower() or "no changes added" in commit_res.stdout.lower() or "nothing added" in commit_res.stderr.lower(): print("Commit skipped: No changes staged."); return False
+             else: print(f"Error running 'git commit': {commit_res.stderr or commit_res.stdout}"); return False
+        else: print("Commit successful."); commit_made = True
+        if commit_made: print(f"Running: git push origin {branch}"); subprocess.run(['git', 'push', 'origin', branch], check=True); print("Push successful.")
+        else: print("Skipping push: no new commit.")
+    except FileNotFoundError: print("Error: 'git' command not found."); return False
+    except subprocess.CalledProcessError as e: print(f"Error during Git op: {e}\nCmd: '{e.cmd}'\nStderr: {e.stderr}"); return False
+    except Exception as e: print(f"Unexpected error during Git ops: {e}"); return False
+    print("---------------------------------"); return commit_made
+
+
+# --- Main Execution ---
 if __name__ == "__main__":
-    target_distro_name_arg = None
-    if len(sys.argv) > 1:
-        target_distro_name_arg = sys.argv[1]
-        print(f"Target distribution specified via command line: '{target_distro_name_arg}'")
+    parser = argparse.ArgumentParser(description='Fetch ISO/ESD links and hashes.')
+    parser.add_argument('distro_name', metavar='DISTRO_NAME', type=str, nargs='?', help='Optional: Specific distribution name.')
+    parser.add_argument('--git', action='store_true', help='Auto add/commit/push links.json.')
+    args = parser.parse_args()
+    target_distro_name_arg = args.distro_name; perform_git_operations = args.git
+    if target_distro_name_arg: print(f"Target specified: '{target_distro_name_arg}'")
+    if perform_git_operations: print("Git auto-commit/push enabled.")
 
-    yaml_source = load_config()
+    config_data = load_config(); yaml_source = config_data.get('settings', {}).get('yaml_source'); config_scripts = config_data.get('scripts', {})
     all_distros = load_yaml_data(yaml_source)
 
-    results = {}
-    processed_count = 0
-    error_count = 0
-
-    # --- Process Distributions ---
+    results = {}; processed_count = 0; error_count = 0; found_target = False
     for distro_info in all_distros:
         current_name = distro_info.get('Name')
-        if not current_name:
-            print("\nSkipping entry with missing 'Name'.")
-            continue
+        if not current_name: print("\nSkipping entry missing 'Name'."); continue
+        if target_distro_name_arg:
+            if current_name == target_distro_name_arg: found_target = True
+            else: continue
 
-        # If a specific target was given, only process that one
-        if target_distro_name_arg and current_name != target_distro_name_arg:
-            continue
-        # Mark if the target was found (even if processing fails later)
-        elif target_distro_name_arg and current_name == target_distro_name_arg:
-             # No specific action needed here now, just proceed to process
-             pass
-        elif target_distro_name_arg and current_name != target_distro_name_arg:
-            # If target specified, skip others
-            continue
+        # --- Check for WindowsMode ---
+        if str(distro_info.get('WindowsMode')).lower() == 'enabled':
+            # Use the AWK-based handler for Windows ESD metadata
+            entry_data = get_windows_esd_details_from_xml(distro_info, config_scripts)
+        else:
+            # Use the web scraping handler for Linux/BSD etc.
+            entry_data = find_iso_web(distro_info)
 
+        results[current_name] = entry_data # Store dict or None
 
-        # Process the current distribution
-        latest_iso_url = find_latest_iso(distro_info)
-        results[current_name] = latest_iso_url # Store result (URL or None)
         processed_count += 1
-        if latest_iso_url is None:
+        if entry_data is None or (isinstance(entry_data, dict) and not entry_data.get('url')):
             error_count += 1
 
-    # --- Check if the specified target was actually in the YAML ---
-    if target_distro_name_arg and target_distro_name_arg not in results:
-         # This handles the case where the arg was given, but no matching 'Name' was found in the YAML list
-         print(f"\nError: Distribution named '{target_distro_name_arg}' not found in the YAML data.")
-         sys.exit(1) # Exit if the specific target wasn't found
+    if target_distro_name_arg and not found_target: print(f"\nError: Target '{target_distro_name_arg}' not found in YAML."); sys.exit(1)
 
-
-    # --- Save Results to JSON File ---
-    output_filename = "links.json"
+    output_filename = "links.json"; save_successful = False
     try:
         print(f"\nWriting results to {output_filename}...")
-        with open(output_filename, 'w', encoding='utf-8') as f:
-            # Use indent for pretty printing, ensure_ascii=False if needed for non-ASCII names
-            json.dump(results, f, indent=4, ensure_ascii=False)
-        print(f"Successfully saved results to {output_filename}")
-    except IOError as e:
-        print(f"Error writing results to {output_filename}: {e}")
-    except Exception as e:
-        print(f"An unexpected error occurred while saving JSON: {e}")
+        output_dir = os.path.dirname(output_filename);
+        if output_dir and not os.path.exists(output_dir): os.makedirs(output_dir); print(f"Created dir: {output_dir}")
+        with open(output_filename, 'w', encoding='utf-8') as f: json.dump(results, f, indent=4, ensure_ascii=False)
+        print(f"Successfully saved results to {output_filename}"); save_successful = True
+    except Exception as e: print(f"Error writing results to {output_filename}: {e}")
 
-    # --- Optional: Print Summary to Console ---
+    git_outcome = False
+    if perform_git_operations and save_successful: git_outcome = run_git_commands(output_filename=output_filename, branch="main")
+    elif perform_git_operations and not save_successful: print("\nSkipping Git: save failed.")
+
     print("\n--- Processing Summary ---")
     if target_distro_name_arg:
-        url = results.get(target_distro_name_arg) # Use .get for safety
-        status = "Found" if url else "Not Found or Error"
+        status = "Unknown"; res_entry = results.get(target_distro_name_arg)
+        if isinstance(res_entry, dict) and res_entry.get('url'):
+             status = f"Found URL (Hash: {res_entry.get('hash_type') or 'N/A'})"
+        elif res_entry is None: status = "Not Found/Error/Skipped"
+        else: status = "Error (No URL found)"
         print(f"Processed target '{target_distro_name_arg}': Status = {status}")
-    else:
-        print(f"Processed {processed_count} distribution(s).")
-        print(f"Errors/Not Found: {error_count}")
-    print(f"Results saved in: {output_filename}")
+    else: print(f"Processed {processed_count} distribution(s). Errors/Skipped/Not Found: {error_count}")
+    if save_successful: print(f"Results saved in: {output_filename}")
+    else: print(f"Failed to save results to {output_filename}")
+    if perform_git_operations: print(f"Git operations outcome: {'Commit/Push OK' if git_outcome else 'No Commit/Push Failed'}")
     print("--------------------------")
