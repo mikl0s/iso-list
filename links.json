@@ -23,14 +23,13 @@
         "hash_value": "35a76364e2ea5437ce004c4f49619723a77ce0eb5dec84336b2b062f7697005cd33608b8bce67e96f91a4095ebb9584c665af1d609f79e70fbae298a26747473",
         "version": "14.2"
     },
-    "Windows 11 Pro Workstation (en-US, x64)": {
-        "url": "http://dl.delivery.mp.microsoft.com/filestreamingservice/files/2a163cd8-b8bb-4e9f-a8b6-ed492b9316be/26100.2033.241004-2336.ge_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_en-us.esd",
-        "hash_type": "SHA1",
-        "hash_value": "92858d17328b07f5d0a42b235aaaa082dff0a12b",
-        "source": "WindowsMode_AWK",
-        "version": "26100.2033"
+    "Proxmox VE latest release": {
+        "url": "https://enterprise.proxmox.com/iso/proxmox-ve_8.4-1.iso",
+        "hash_type": "SHA256",
+        "hash_value": "d237d70ca48a9f6eb47f95fd4fd337722c3f69f8106393844d027d28c26523d8",
+        "version": "8.4"
     },
-    "Windows 11 Pro (en-us, x64)": {
+    "Windows 11 Pro + Workstation (en-US, x64)": {
         "url": "http://dl.delivery.mp.microsoft.com/filestreamingservice/files/2a163cd8-b8bb-4e9f-a8b6-ed492b9316be/26100.2033.241004-2336.ge_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_en-us.esd",
         "hash_type": "SHA1",
         "hash_value": "92858d17328b07f5d0a42b235aaaa082dff0a12b",
