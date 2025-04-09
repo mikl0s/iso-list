@@ -318,6 +318,33 @@ def find_iso_web(distro_info):
              # --- End Version Extraction ---
 
              result_data = {'url': selected_file_url, 'hash_type': None, 'hash_value': None, 'version': version} # Add version here
+             
+             # --- Get file size using HEAD request ---
+             print(f"  Getting file size for {selected_file_url}...")
+             try:
+                 head_response = session.head(selected_file_url, timeout=15, allow_redirects=True)
+                 head_response.raise_for_status()
+                 content_length = head_response.headers.get('Content-Length')
+                 if content_length:
+                     file_size = int(content_length)
+                     result_data['size'] = file_size
+                     print(f"    Size: {file_size} bytes")
+                 else:
+                     print(f"    No Content-Length header found")
+                     # If HEAD doesn't include Content-Length, try a GET with stream=True
+                     print(f"    Attempting GET request with stream=True...")
+                     get_response = session.get(selected_file_url, stream=True, timeout=15, allow_redirects=True)
+                     get_response.raise_for_status()
+                     content_length = get_response.headers.get('Content-Length')
+                     if content_length:
+                         file_size = int(content_length)
+                         result_data['size'] = file_size
+                         print(f"    Size (from GET): {file_size} bytes")
+                     else:
+                         print(f"    Still no Content-Length header found")
+             except Exception as e:
+                 print(f"    Error getting file size: {e}")
+             
              if hash_match_pattern and file_directory_url and directory_links:
                  print(f"  Searching for hash file matching '{hash_match_pattern}' in {file_directory_url}...")
                  found_hash_url = None; hash_file_name = None
@@ -402,10 +429,12 @@ def get_windows_esd_details_from_xml(distro_info, config_scripts):
         f_name = $0; gsub(/.*<FileName>|<\/FileName>.*/, "", f_name);
         f_path = $0; gsub(/.*<FilePath>|<\/FilePath>.*/, "", f_path);
         f_sha1 = $0; gsub(/.*<Sha1>|<\/Sha1>.*/, "", f_sha1);
+        f_size = $0; gsub(/.*<Size>|<\/Size>.*/, "", f_size);
         # Print results with prefixes
         print "AWK_FileName:" f_name;
         print "AWK_FilePath:" f_path;
         print "AWK_Sha1:" f_sha1;
+        print "AWK_Size:" f_size;
         found=1;
         exit; # Assume only one match needed
     }
@@ -431,6 +460,7 @@ def get_windows_esd_details_from_xml(distro_info, config_scripts):
     file_path_url = extracted_data.get('AWK_FilePath')
     sha1_hash = extracted_data.get('AWK_Sha1')
     file_name = extracted_data.get('AWK_FileName') # Get filename from awk output
+    file_size = extracted_data.get('AWK_Size') # Get file size from awk output
     version = "Unknown (est)" # Default
 
     if file_name:
@@ -445,7 +475,14 @@ def get_windows_esd_details_from_xml(distro_info, config_scripts):
 
     if not file_path_url: print(f"  Error: Could not extract FilePath (URL) from AWK output."); return None
 
-    return {'url': file_path_url, 'hash_type': 'SHA1' if sha1_hash else None, 'hash_value': sha1_hash, 'source': 'WindowsMode_AWK', 'version': version} # Add version here
+    result = {'url': file_path_url, 'hash_type': 'SHA1' if sha1_hash else None, 'hash_value': sha1_hash, 'source': 'WindowsMode_AWK', 'version': version}
+    
+    # Add file size if available
+    if file_size and file_size.isdigit():
+        result['size'] = int(file_size)
+        print(f"    File size: {result['size']} bytes")
+    
+    return result
 
 
 # --- Git Command Function ---
