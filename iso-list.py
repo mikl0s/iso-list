@@ -298,7 +298,26 @@ def find_iso_web(distro_info):
 
         # --- Hash File Search (Common path) ---
         if selected_file_url:
-             result_data = {'url': selected_file_url, 'hash_type': None, 'hash_value': None}
+             \
+             # --- Start Version Extraction ---
+             version = "Unknown (est)" # Default
+             if selected_filename:
+                 # Simplified regex test: Match X.Y
+                 match = re.search(r'(\d+\.\d+)', selected_filename) # <-- SIMPLIFIED REGEX
+                 if match:
+                     version = match.group(1) # <-- Simpler extraction
+                 else:
+                     # Fallback: Try extracting from directory URL if filename fails
+                     if file_directory_url:
+                         dir_name_part = urlparse(file_directory_url).path.strip('/').split('/')[-1]
+                         match_dir = re.search(r'(\d+\.\d+)', dir_name_part) # <-- SIMPLIFIED REGEX
+                         if match_dir:
+                             version = match_dir.group(1) + " (from dir)" # <-- Simpler extraction
+
+             print(f"  Extracted Version: {version}")
+             # --- End Version Extraction ---
+
+             result_data = {'url': selected_file_url, 'hash_type': None, 'hash_value': None, 'version': version} # Add version here
              if hash_match_pattern and file_directory_url and directory_links:
                  print(f"  Searching for hash file matching '{hash_match_pattern}' in {file_directory_url}...")
                  found_hash_url = None; hash_file_name = None
@@ -408,12 +427,25 @@ def get_windows_esd_details_from_xml(distro_info, config_scripts):
         else: print(f"    AWK command produced no output. No match found?"); return None
     except Exception as e: print(f"  Error running AWK: {e}"); return None
 
-    # Step 4: Format Result
+    # Step 4: Format Result & Extract Version
     file_path_url = extracted_data.get('AWK_FilePath')
     sha1_hash = extracted_data.get('AWK_Sha1')
+    file_name = extracted_data.get('AWK_FileName') # Get filename from awk output
+    version = "Unknown (est)" # Default
+
+    if file_name:
+        # Extract version from filename like 26100.2033.241004-2336...
+        match = re.match(r'(\d+\.\d+)', file_name) # Match major.minor build at the start
+        if match:
+            version = match.group(1)
+            # Optionally add more detail if needed, e.g., full build string
+            # full_build_match = re.match(r'(\d+\.\d+\.\d+-\d+)', file_name)
+            # if full_build_match: version = full_build_match.group(1)
+        print(f"    Extracted Windows Version: {version}")
+
     if not file_path_url: print(f"  Error: Could not extract FilePath (URL) from AWK output."); return None
 
-    return {'url': file_path_url, 'hash_type': 'SHA1' if sha1_hash else None, 'hash_value': sha1_hash, 'source': 'WindowsMode_AWK'}
+    return {'url': file_path_url, 'hash_type': 'SHA1' if sha1_hash else None, 'hash_value': sha1_hash, 'source': 'WindowsMode_AWK', 'version': version} # Add version here
 
 
 # --- Git Command Function ---
