@@ -35,7 +35,13 @@
         "version": "14.2",
         "size": 459491328
     },
-    "Fedora Workstation (Latest)": null,
+    "Fedora Workstation (Latest)": {
+        "url": "https://download.fedoraproject.org/pub/fedora/linux/releases/41/Workstation/x86_64/iso/Fedora-Workstation-Live-x86_64-41-1.4.iso",
+        "hash_type": "SHA256",
+        "hash_value": "a2dd3caf3224b8f3a640d9e31b1016d2a4e98a6d7cb435a1e2030235976d6da2",
+        "version": "1.4",
+        "size": 2458187776
+    },
     "Proxmox VE latest release": {
         "url": "https://enterprise.proxmox.com/iso/proxmox-ve_8.4-1.iso",
         "hash_type": "SHA256",
