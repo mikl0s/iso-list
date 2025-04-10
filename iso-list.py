@@ -194,6 +194,7 @@ def find_iso_web(distro_info):
         
         # Get version from YAML or default to Unknown
         version = distro_info.get('Version', "Unknown")
+        print(f"  Using version from YAML: {version}")
         
         # Get SHA256 from YAML
         direct_hash = distro_info.get('SHA256')
@@ -223,11 +224,18 @@ def find_iso_web(distro_info):
                 print(f"  Size: {file_size} bytes")
         except Exception as e:
             print(f"  Error getting file size: {e}")
-            
-        result = {'url': direct_url, 'hash_type': 'SHA256', 'hash_value': direct_hash, 'version': version}
+        
+        # Make sure version is the correct one from YAML    
+        result = {
+            'url': direct_url, 
+            'hash_type': 'SHA256', 
+            'hash_value': direct_hash, 
+            'version': version  # Use version from YAML
+        }
         if file_size:
             result['size'] = file_size
             
+        print(f"  Final result data: {result}")
         return result
 
     # --- Regular processing for non-DIRECT entries ---
@@ -456,24 +464,31 @@ def find_iso_web(distro_info):
 
         # --- Hash File Search (Common path) ---
         if selected_file_url:
-             \
-             # --- Start Version Extraction ---
-             version = "Unknown (est)" # Default
-             if selected_filename:
-                 # Simplified regex test: Match X.Y
-                 match = re.search(r'(\d+\.\d+)', selected_filename) # <-- SIMPLIFIED REGEX
+             print(f"  Selected file: {selected_file_url}")
+             
+             # --- Extract Version from filename ---
+             # Check for explicit version in YAML first
+             version = distro_info.get('Version')
+             if version:
+                 print(f"  Using explicit version from YAML: {version}")
+             else:
+                 # Try to extract version from URL or filename if not in YAML
+                 version = "Unknown (est)" # Default
+                 # Try to extract version from URL
+                 match = re.search(r'(\d+\.\d+(?:\.\d+)?(?:-\d+)?)', selected_filename)
                  if match:
                      version = match.group(1) # <-- Simpler extraction
+                     print(f"  Extracted version from filename: {version}")
+                 # If that failed, try to get it from directory path
+                 elif any(re.search(r'\/(\d+\.\d+(?:\.\d+)?(?:-\d+)?)(?=\/|$)', part) for part in dir_path_parts):
+                     match_dir = re.search(r'\/(\d+\.\d+(?:\.\d+)?(?:-\d+)?)(?=\/|$)', '/'.join(dir_path_parts))
+                     if match_dir:
+                         version = match_dir.group(1) + " (from dir)" # <-- Simpler extraction
+                         print(f"  Extracted version from directory: {version}")
                  else:
-                     # Fallback: Try extracting from directory URL if filename fails
-                     if file_directory_url:
-                         dir_name_part = urlparse(file_directory_url).path.strip('/').split('/')[-1]
-                         match_dir = re.search(r'(\d+\.\d+)', dir_name_part) # <-- SIMPLIFIED REGEX
-                         if match_dir:
-                             version = match_dir.group(1) + " (from dir)" # <-- Simpler extraction
-
+                     print(f"  No version pattern found in URL or filename, using default.")
+             
              print(f"  Extracted Version: {version}")
-             # --- End Version Extraction ---
 
              result_data = {'url': selected_file_url, 'hash_type': None, 'hash_value': None, 'version': version} # Add version here
              
@@ -627,17 +642,23 @@ def get_windows_esd_details_from_xml(distro_info, config_scripts):
     sha1_hash = extracted_data.get('AWK_Sha1')
     file_name = extracted_data.get('AWK_FileName') # Get filename from awk output
     file_size = extracted_data.get('AWK_Size') # Get file size from awk output
-    version = "Unknown (est)" # Default
-
-    if file_name:
-        # Extract version from filename like 26100.2033.241004-2336...
-        match = re.match(r'(\d+\.\d+)', file_name) # Match major.minor build at the start
-        if match:
-            version = match.group(1)
-            # Optionally add more detail if needed, e.g., full build string
-            # full_build_match = re.match(r'(\d+\.\d+\.\d+-\d+)', file_name)
-            # if full_build_match: version = full_build_match.group(1)
-        print(f"    Extracted Windows Version: {version}")
+    
+    # Check for explicit version in YAML first
+    version = distro_info.get('Version')
+    if version:
+        print(f"    Using explicit version from YAML: {version}")
+    else:
+        # Extract version from filename if not provided in YAML
+        version = "Unknown (est)" # Default
+        if file_name:
+            # Extract version from filename like 26100.2033.241004-2336...
+            match = re.match(r'(\d+\.\d+)', file_name) # Match major.minor build at the start
+            if match:
+                version = match.group(1)
+                # Optionally add more detail if needed, e.g., full build string
+                # full_build_match = re.match(r'(\d+\.\d+\.\d+-\d+)', file_name)
+                # if full_build_match: version = full_build_match.group(1)
+            print(f"    Extracted Windows Version: {version}")
 
     if not file_path_url: print(f"  Error: Could not extract FilePath (URL) from AWK output."); return None
 

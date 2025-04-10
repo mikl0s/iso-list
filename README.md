@@ -50,6 +50,14 @@ The script generates a `links.json` file in the root directory containing a mapp
 
 ```json
 {
+    "Windows 11 Pro + Workstation (en-US, x64)": {
+        "url": "http://dl.delivery.mp.microsoft.com/filestreamingservice/files/2a163cd8-b8bb-4e9f-a8b6-ed492b9316be/26100.2033.241004-2336.ge_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_en-us.esd",
+        "hash_type": "SHA1",
+        "hash_value": "92858d17328b07f5d0a42b235aaaa082dff0a12b",
+        "source": "WindowsMode_AWK",
+        "version": "26100.2033",
+        "size": 4161510161
+    },
     "Debian 12 Netinst (Latest)": {
         "url": "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-12.10.0-amd64-netinst.iso",
         "hash_type": "SHA512",
@@ -78,20 +86,61 @@ The script generates a `links.json` file in the root directory containing a mapp
         "version": "14.2",
         "size": 459491328
     },
+    "Fedora Workstation (Latest)": {
+        "url": "https://download.fedoraproject.org/pub/fedora/linux/releases/41/Workstation/x86_64/iso/Fedora-Workstation-Live-x86_64-41-1.4.iso",
+        "hash_type": "SHA256",
+        "hash_value": "a2dd3caf3224b8f3a640d9e31b1016d2a4e98a6d7cb435a1e2030235976d6da2",
+        "version": "1.4",
+        "size": 2458187776
+    },
+    "CentOS 10 Stream (Latest)": {
+        "url": "https://mirror.netsite.dk/centos-stream/10-stream/BaseOS/x86_64/iso/CentOS-Stream-10-latest-x86_64-dvd1.iso",
+        "hash_type": null,
+        "hash_value": null,
+        "version": "Unknown (est)",
+        "size": 7602765824
+    },
+    "Arch Linux (Latest)": {
+        "url": "https://geo.mirror.pkgbuild.com/iso/latest/archlinux-x86_64.iso",
+        "hash_type": "SHA256",
+        "hash_value": "1155af9c142387c45eb6fbdbf32f5652fb514ce15a4d17a83e6056a996895026",
+        "version": "Unknown (est)",
+        "size": 1236303872
+    },
+    "Pop!_OS 22.04 LTS with NVIDIA": {
+        "url": "https://iso.pop-os.org/22.04/amd64/nvidia/51/pop-os_22.04_amd64_nvidia_51.iso",
+        "hash_type": "SHA256",
+        "hash_value": "808a3df159b57ec69fe8dae47c69d4b07a834ddeff0bd73fc7d4ada485b61725",
+        "version": "Unknown",
+        "size": 3064233984
+    },
+    "Kali Linux (Latest)": {
+        "url": "https://cdimage.kali.org/kali-2025.1a/kali-linux-2025.1a-installer-netinst-amd64.iso",
+        "hash_type": "SHA256",
+        "hash_value": "32c3cf9eeba5f49ace1bcc8b16293495a151c0c175bf80f8601031cb973425f5",
+        "version": "2025.1",
+        "size": 636485632
+    },
+    "Solus Budgie (Latest)": {
+        "url": "https://downloads.getsol.us/isos/2025-01-26/Solus-Budgie-Release-2025-01-26.iso",
+        "hash_type": "SHA256",
+        "hash_value": "4e2d664b6821b8d358c67967be1bfd71b222bf0e748f224c794f3f2a7b96c266",
+        "version": "Unknown (est)",
+        "size": 3204448256
+    },
+    "Zorin 17.3 Core": {
+        "url": "https://mirrors.edge.kernel.org/zorinos-isos/17/Zorin-OS-17.3-Core-64-bit.iso",
+        "hash_type": "SHA256",
+        "hash_value": "58cc54a7d0974367bf9b5563c828a39a3d19a25b188c9ce211a6c9467794e762",
+        "version": "17.3",
+        "size": 3657433088
+    },
     "Proxmox VE latest release": {
         "url": "https://enterprise.proxmox.com/iso/proxmox-ve_8.4-1.iso",
         "hash_type": "SHA256",
         "hash_value": "d237d70ca48a9f6eb47f95fd4fd337722c3f69f8106393844d027d28c26523d8",
         "version": "8.4",
         "size": 1571895296
-    },
-    "Windows 11 Pro + Workstation (en-US, x64)": {
-        "url": "http://dl.delivery.mp.microsoft.com/filestreamingservice/files/2a163cd8-b8bb-4e9f-a8b6-ed492b9316be/26100.2033.241004-2336.ge_release_svc_refresh_CLIENTCONSUMER_RET_x64FRE_en-us.esd",
-        "hash_type": "SHA1",
-        "hash_value": "92858d17328b07f5d0a42b235aaaa082dff0a12b",
-        "source": "WindowsMode_AWK",
-        "version": "26100.2033",
-        "size": 4161510161
     }
 }
 ```

@@ -42,9 +42,9 @@ distributions:
     HashMatch: "Fedora-Workstation-*-x86_64-CHECKSUM"
     PathNavigation: ["Workstation", "x86_64", "iso"] # Sequence of directories to navigate after finding latest version
 
-  - Name: CentOS 10 Stream (Latest)
+  - Name: CentOS 10 Stream 2025-03-31
     URL: https://mirror.netsite.dk/centos-stream/10-stream/BaseOS/x86_64/iso/
-    Extension: 'CentOS-Stream-10-latest-x86_64-dvd1.iso'
+    Extension: 'CentOS-Stream-10-20250331.0-x86_64-dvd1.iso'
     VersionMatch: "" # Matches latest dir, effectively
     HashMatch: "SHA256SUM"
     #PathNavigation: ["Workstation", "x86_64", "iso"] # Sequence of directories to navigate after finding latest version
@@ -55,13 +55,11 @@ distributions:
     VersionMatch: "" # Matches latest dir, effectively
     HashMatch: "sha256sums.txt"
     #PathNavigation: ["Workstation", "x86_64", "iso"] # Sequence of directories to navigate after finding latest version
+    Version: "Latest"
 
   - Name: Pop!_OS 22.04 LTS with NVIDIA
     DIRECT: https://iso.pop-os.org/22.04/amd64/nvidia/51/pop-os_22.04_amd64_nvidia_51.iso
-    #Extension: ""
-    #VersionMatch: "" # Matches latest dir, effectively
-    #HashMatch: "SHA256SUM"
-    #PathNavigation: ["Workstation", "x86_64", "iso"] # Sequence of directories to navigate after finding latest version
+    Version: "22.04" 
     SHA256: "808a3df159b57ec69fe8dae47c69d4b07a834ddeff0bd73fc7d4ada485b61725"
 
   - Name: Kali Linux (Latest)
@@ -78,6 +76,7 @@ distributions:
     VersionMatch: "" # Matches latest dir, effectively
     HashMatch: "Solus-Budgie-Release-*.iso.sha256sum"
     #PathNavigation: ["Workstation", "x86_64", "iso"] # Sequence of directories to navigate after finding latest version
+    Version: "2025.01.26"
 
   - Name: Zorin 17.3 Core
     URL: https://mirrors.edge.kernel.org/zorinos-isos/17/

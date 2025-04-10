@@ -11,14 +11,14 @@
         "url": "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-12.10.0-amd64-netinst.iso",
         "hash_type": "SHA512",
         "hash_value": "cb089def0684fd93c9c2fbe45fd16ecc809c949a6fd0c91ee199faefe7d4b82b64658a264a13109d59f1a40ac3080be2f7bd3d8bf3e9cdf509add6d72576a79b",
-        "version": "12.10",
+        "version": "12.10.0",
         "size": 663748608
     },
     "Ubuntu Server 24.04 LTS": {
         "url": "https://releases.ubuntu.com/24.04.2/ubuntu-24.04.2-live-server-amd64.iso",
         "hash_type": "SHA256",
         "hash_value": "d6dab0c3a657988501b4bd76f1297c053df710e06e0c3aece60dead24f270b4d",
-        "version": "24.04",
+        "version": "24.04.2",
         "size": 3213064192
     },
     "Linux Mint Cinnamon (Latest)": {
@@ -42,25 +42,25 @@
         "version": "1.4",
         "size": 2458187776
     },
-    "CentOS 10 Stream (Latest)": {
-        "url": "https://mirror.netsite.dk/centos-stream/10-stream/BaseOS/x86_64/iso/CentOS-Stream-10-latest-x86_64-dvd1.iso",
-        "hash_type": null,
-        "hash_value": null,
-        "version": "Unknown (est)",
+    "CentOS 10 Stream 2025-03-31": {
+        "url": "https://mirror.netsite.dk/centos-stream/10-stream/BaseOS/x86_64/iso/CentOS-Stream-10-20250331.0-x86_64-dvd1.iso",
+        "hash_type": "SHA256",
+        "hash_value": "2b90ea5a643c09cd915714ad77e176643d371d560e8102b4793a9d8621a26d8d",
+        "version": "20250331.0",
         "size": 7602765824
     },
     "Arch Linux (Latest)": {
         "url": "https://geo.mirror.pkgbuild.com/iso/latest/archlinux-x86_64.iso",
         "hash_type": "SHA256",
         "hash_value": "1155af9c142387c45eb6fbdbf32f5652fb514ce15a4d17a83e6056a996895026",
-        "version": "Unknown (est)",
+        "version": "Latest",
         "size": 1236303872
     },
     "Pop!_OS 22.04 LTS with NVIDIA": {
         "url": "https://iso.pop-os.org/22.04/amd64/nvidia/51/pop-os_22.04_amd64_nvidia_51.iso",
         "hash_type": "SHA256",
         "hash_value": "808a3df159b57ec69fe8dae47c69d4b07a834ddeff0bd73fc7d4ada485b61725",
-        "version": "Unknown",
+        "version": "22.04",
         "size": 3064233984
     },
     "Kali Linux (Latest)": {
@@ -74,7 +74,7 @@
         "url": "https://downloads.getsol.us/isos/2025-01-26/Solus-Budgie-Release-2025-01-26.iso",
         "hash_type": "SHA256",
         "hash_value": "4e2d664b6821b8d358c67967be1bfd71b222bf0e748f224c794f3f2a7b96c266",
-        "version": "Unknown (est)",
+        "version": "2025.01.26",
         "size": 3204448256
     },
     "Zorin 17.3 Core": {
@@ -88,7 +88,7 @@
         "url": "https://enterprise.proxmox.com/iso/proxmox-ve_8.4-1.iso",
         "hash_type": "SHA256",
         "hash_value": "d237d70ca48a9f6eb47f95fd4fd337722c3f69f8106393844d027d28c26523d8",
-        "version": "8.4",
+        "version": "8.4-1",
         "size": 1571895296
     }
 }
