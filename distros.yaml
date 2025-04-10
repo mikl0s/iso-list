@@ -42,6 +42,51 @@ distributions:
     HashMatch: "Fedora-Workstation-*-x86_64-CHECKSUM"
     PathNavigation: ["Workstation", "x86_64", "iso"] # Sequence of directories to navigate after finding latest version
 
+  - Name: CentOS 10 Stream (Latest)
+    URL: https://mirror.netsite.dk/centos-stream/10-stream/BaseOS/x86_64/iso/
+    Extension: 'CentOS-Stream-10-latest-x86_64-dvd1.iso'
+    VersionMatch: "" # Matches latest dir, effectively
+    HashMatch: "SHA256SUM"
+    #PathNavigation: ["Workstation", "x86_64", "iso"] # Sequence of directories to navigate after finding latest version
+
+  - Name: Arch Linux (Latest)
+    URL: https://geo.mirror.pkgbuild.com/iso/latest/
+    Extension: 'archlinux-x86_64.iso'
+    VersionMatch: "" # Matches latest dir, effectively
+    HashMatch: "sha256sums.txt"
+    #PathNavigation: ["Workstation", "x86_64", "iso"] # Sequence of directories to navigate after finding latest version
+
+  - Name: Pop!_OS 22.04 LTS with NVIDIA
+    DIRECT: https://iso.pop-os.org/22.04/amd64/nvidia/51/pop-os_22.04_amd64_nvidia_51.iso
+    #Extension: ""
+    #VersionMatch: "" # Matches latest dir, effectively
+    #HashMatch: "SHA256SUM"
+    #PathNavigation: ["Workstation", "x86_64", "iso"] # Sequence of directories to navigate after finding latest version
+    SHA256: "808a3df159b57ec69fe8dae47c69d4b07a834ddeff0bd73fc7d4ada485b61725"
+
+  - Name: Kali Linux (Latest)
+    URL: https://cdimage.kali.org/
+    Extension: 'kali-linux-*-installer-netinst-amd64.iso'
+    VersionMatch: "" # Matches latest dir, effectively
+    HashMatch: "SHA256SUMS"
+    #PathNavigation: ["Workstation", "x86_64", "iso"] # Sequence of directories to navigate after finding latest version
+    #HashSHA256: "808a3df159b57ec69fe8dae47c69d4b07a834ddeff0bd73fc7d4ada485b61725"
+
+  - Name: Solus Budgie (Latest)
+    URL: https://downloads.getsol.us/isos/
+    Extension: 'Solus-Budgie-Release-*.iso'
+    VersionMatch: "" # Matches latest dir, effectively
+    HashMatch: "Solus-Budgie-Release-*.iso.sha256sum"
+    #PathNavigation: ["Workstation", "x86_64", "iso"] # Sequence of directories to navigate after finding latest version
+
+  - Name: Zorin 17.3 Core
+    URL: https://mirrors.edge.kernel.org/zorinos-isos/17/
+    Extension: 'Zorin-OS-17.3-Core-64-bit.iso'
+    VersionMatch: "" # Matches latest dir, effectively
+    #HashMatch: "SHA256SUM"
+    #PathNavigation: ["Workstation", "x86_64", "iso"] # Sequence of directories to navigate after finding latest version
+    SHA256: "58cc54a7d0974367bf9b5563c828a39a3d19a25b188c9ce211a6c9467794e762"
+
   - Name: Proxmox VE latest release
     URL: https://enterprise.proxmox.com/iso/ # Example structure might vary! Check actual mirror
     Extension: 'proxmox-ve*.iso'

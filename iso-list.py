@@ -186,7 +186,51 @@ def find_iso_web(distro_info):
     version_match_input = distro_info.get('VersionMatch')
     hash_match_pattern = distro_info.get('HashMatch')
     path_navigation = distro_info.get('PathNavigation', []) # New field for directory navigation
+    
+    # --- Handle DIRECT directive ---
+    direct_url = distro_info.get('DIRECT')
+    if direct_url and isinstance(direct_url, str):
+        print(f"\nProcessing (DIRECT Mode): {name}")
+        
+        # Get version from YAML or default to Unknown
+        version = distro_info.get('Version', "Unknown")
+        
+        # Get SHA256 from YAML
+        direct_hash = distro_info.get('SHA256')
+        if not direct_hash:
+            print(f"  Warning: No SHA256 provided for DIRECT download")
+            
+        print(f"  Using direct URL: {direct_url}")
+        if direct_hash:
+            print(f"  Using provided SHA256: {direct_hash}")
+            
+        # Try to get file size
+        file_size = None
+        try:
+            session = requests.Session()
+            session.headers.update({
+                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Referer': 'https://getfedora.org/',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5'
+            })
+            
+            head_response = session.head(direct_url, timeout=15, allow_redirects=True)
+            head_response.raise_for_status()
+            content_length = head_response.headers.get('Content-Length')
+            if content_length:
+                file_size = int(content_length)
+                print(f"  Size: {file_size} bytes")
+        except Exception as e:
+            print(f"  Error getting file size: {e}")
+            
+        result = {'url': direct_url, 'hash_type': 'SHA256', 'hash_value': direct_hash, 'version': version}
+        if file_size:
+            result['size'] = file_size
+            
+        return result
 
+    # --- Regular processing for non-DIRECT entries ---
     # --- Validation ---
     if not base_url or not isinstance(base_url, str) or not base_url.strip():
         print(f"\nSkipping: Invalid/missing 'URL' for '{name}'.")
@@ -459,6 +503,14 @@ def find_iso_web(distro_info):
              except Exception as e:
                  print(f"    Error getting file size: {e}")
              
+             # --- Direct hash value from YAML ---
+             direct_hash = distro_info.get('SHA256')
+             if direct_hash:
+                 print(f"  Using direct SHA256 hash from YAML: {direct_hash}")
+                 result_data['hash_value'] = direct_hash
+                 result_data['hash_type'] = 'SHA256'
+                 return result_data
+             
              if hash_match_pattern and file_directory_url and directory_links:
                  print(f"  Searching for hash file matching '{hash_match_pattern}' in {file_directory_url}...")
                  found_hash_url = None; hash_file_name = None
@@ -483,7 +535,7 @@ def find_iso_web(distro_info):
                  else: print(f"  Hash file matching '{hash_match_pattern}' not found.")
              else: print("  Hash search skipped.")
              return result_data
-        else: print("  Failed to determine file URL."); return None # Should have URL if we got here
+        else: print("  Failed to determine file URL."); return None
     except requests.exceptions.Timeout: print(f"  Error: Timeout occurred."); return None
     except requests.exceptions.RequestException as e: error_details = f"URL: {e.request.url if e.request else 'N/A'}"; print(f"  Error during network request: {e} ({error_details})"); return None
     except Exception as e: print(f"  An unexpected error occurred processing '{name}': {e}"); return None
