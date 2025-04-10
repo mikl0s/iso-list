@@ -50,7 +50,11 @@ def load_yaml_data(source):
     try:
         if source.startswith(('http://', 'https://')):
             print(f"Fetching YAML data from URL: {source}")
-            headers = {'User-Agent': 'ISO-List-Script/1.15'} # Version bump
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5'
+            }
             response = requests.get(source, timeout=15, headers=headers)
             response.raise_for_status()
             yaml_content = response.text
@@ -181,6 +185,7 @@ def find_iso_web(distro_info):
     extension_pattern = distro_info.get('Extension') # Required in YAML
     version_match_input = distro_info.get('VersionMatch')
     hash_match_pattern = distro_info.get('HashMatch')
+    path_navigation = distro_info.get('PathNavigation', []) # New field for directory navigation
 
     # --- Validation ---
     if not base_url or not isinstance(base_url, str) or not base_url.strip():
@@ -195,15 +200,24 @@ def find_iso_web(distro_info):
     if hash_match_pattern is not None and not isinstance(hash_match_pattern, str):
          print(f"\nWarning: Invalid type for 'HashMatch' in '{name}'. Ignoring hash search.")
          hash_match_pattern = None
+    if not isinstance(path_navigation, list):
+         print(f"\nWarning: Invalid type for 'PathNavigation' in '{name}'. Must be a list of directory names.")
+         path_navigation = []
 
     print(f"\nProcessing (Web): {name}")
     print(f"  Base URL: {base_url}")
     print(f"  Looking for pattern: {extension_pattern}")
     print(f"  VersionMatch criteria: {version_match_input}")
     if hash_match_pattern: print(f"  Looking for Hash pattern: {hash_match_pattern}")
+    if path_navigation: print(f"  Path navigation sequence: {path_navigation}")
 
     session = requests.Session()
-    session.headers.update({'User-Agent': 'ISO-List-Script/1.15 (+https://github.com/mikl0s/iso-list)'}) # Version bump
+    session.headers.update({
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://getfedora.org/',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5'
+    }) # More browser-like headers to avoid 403 errors on mirrors
 
     selected_file_url = None; selected_filename = None
     file_directory_url = None; directory_links = []
@@ -211,13 +225,49 @@ def find_iso_web(distro_info):
     try:
         # --- Attempt 1: Look for file directly in the base URL ---
         print(f"  Attempt 1: Checking base URL: {base_url}")
-        response = session.get(base_url, timeout=20)
-        response.raise_for_status()
+        retry_count = 0
+        max_retries = 5
+        original_url = base_url
+        
+        while retry_count < max_retries:
+            try:
+                response = session.get(base_url, timeout=20)
+                
+                # Check for error responses that might indicate mirror issues
+                if response.status_code in (403, 404, 500):
+                    print(f"    Received {response.status_code} error from {base_url}")
+                    retry_count += 1
+                    if retry_count >= max_retries:
+                        print(f"    Exceeded max retries ({max_retries}). Giving up.")
+                        return None
+                        
+                    print(f"    Retry {retry_count}/{max_retries}: Starting over with original URL")
+                    # Reset to original URL
+                    base_url = original_url
+                    continue
+                    
+                response.raise_for_status()
+                break  # Success, exit retry loop
+                
+            except requests.exceptions.RequestException as e:
+                print(f"    Error during request: {e}")
+                retry_count += 1
+                if retry_count >= max_retries:
+                    print(f"    Exceeded max retries ({max_retries}). Giving up.")
+                    return None
+                    
+                print(f"    Retry {retry_count}/{max_retries}: Starting over with original URL")
+                base_url = original_url
+                continue
+                
+        # Get content type and prepare soup outside the retry loop
         content_type = response.headers.get('Content-Type', '').lower()
         if 'html' not in content_type: print(f"  Warn: Non-HTML at {base_url}")
 
-        soup = BeautifulSoup(response.text, 'html.parser'); links = soup.find_all('a', href=True)
-        directory_links = links; file_directory_url = base_url
+        soup = BeautifulSoup(response.text, 'html.parser')
+        links = soup.find_all('a', href=True)
+        directory_links = links
+        file_directory_url = base_url
 
         potential_files = []
         for link in links:
@@ -237,6 +287,8 @@ def find_iso_web(distro_info):
             if selected_file['url'].startswith(('http://', 'https://')):
                 selected_file_url = selected_file['url']; selected_filename = selected_file['filename']
             else: print(f"  Error: Constructed URL '{selected_file['url']}' is not absolute."); return None
+            # If we found the file directly, skip path navigation
+            path_navigation = []
 
         # --- Attempt 2 & 3: Only if file not found directly ---
         if selected_file_url is None:
@@ -273,6 +325,68 @@ def find_iso_web(distro_info):
 
             target_dir_url = target_dir_info['url']
             print(f"  Selected target directory: {target_dir_info['name']}/ -> {target_dir_url}")
+
+            # --- Handle PathNavigation if specified ---
+            if path_navigation:
+                print(f"  Following path navigation sequence: {path_navigation}")
+                current_url = target_dir_url
+                original_url = target_dir_url  # Save original URL for retries
+                retry_count = 0
+                max_retries = 5
+                
+                # Keep track of where we are in the path navigation
+                navigation_index = 0
+                while navigation_index < len(path_navigation) and retry_count < max_retries:
+                    dir_name = path_navigation[navigation_index]
+                    print(f"    Navigating to: {dir_name}")
+                    try:
+                        resp = session.get(current_url, timeout=20)
+                        
+                        # Check for error responses that might indicate mirror issues
+                        if resp.status_code in (403, 404, 500):
+                            print(f"    Received {resp.status_code} error from {current_url}")
+                            retry_count += 1
+                            if retry_count >= max_retries:
+                                print(f"    Exceeded max retries ({max_retries}). Giving up.")
+                                return None
+                                
+                            print(f"    Retry {retry_count}/{max_retries}: Starting over with original URL")
+                            # Reset to original URL and start path navigation over
+                            current_url = original_url
+                            navigation_index = 0
+                            continue
+                            
+                        resp.raise_for_status()
+                        
+                        soup = BeautifulSoup(resp.text, 'html.parser')
+                        links = soup.find_all('a', href=True)
+                        
+                        # Find the matching directory
+                        found = False
+                        for link in links:
+                            href = link['href']
+                            if href.endswith('/') and href.strip('/') == dir_name:
+                                current_url = urljoin(current_url, href)
+                                found = True
+                                break
+                        
+                        if not found:
+                            print(f"    Error: Directory '{dir_name}' not found in {current_url}")
+                            return None
+                            
+                        # Successfully navigated to this directory, move to next
+                        navigation_index += 1
+                            
+                    except requests.exceptions.RequestException as e:
+                        print(f"    Error navigating to {dir_name}: {e}")
+                        return None
+                
+                if retry_count >= max_retries:
+                    print(f"  Failed to navigate path after {max_retries} retries")
+                    return None
+                    
+                target_dir_url = current_url
+                print(f"  Final navigation URL: {target_dir_url}")
 
             print(f"  Attempt 3: Checking inside: {target_dir_url}")
             try: resp_subdir = session.get(target_dir_url, timeout=20); resp_subdir.raise_for_status()
@@ -368,7 +482,7 @@ def find_iso_web(distro_info):
                      except Exception as e_p: print(f"    ERR parse hash file: {e_p}")
                  else: print(f"  Hash file matching '{hash_match_pattern}' not found.")
              else: print("  Hash search skipped.")
-             return result_data # Return final data
+             return result_data
         else: print("  Failed to determine file URL."); return None # Should have URL if we got here
     except requests.exceptions.Timeout: print(f"  Error: Timeout occurred."); return None
     except requests.exceptions.RequestException as e: error_details = f"URL: {e.request.url if e.request else 'N/A'}"; print(f"  Error during network request: {e} ({error_details})"); return None

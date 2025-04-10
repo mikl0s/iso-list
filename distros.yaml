@@ -1,4 +1,15 @@
 distributions:
+  - Name: Windows 11 Pro + Workstation (en-US, x64) # Your descriptive name for the result
+    WindowsMode: Enabled              # REQUIRED: Must be set to Enabled to trigger this logic
+    Edition: "ProfessionalWorkstation"          # e.g., Professional, Home, Enterprise, CoreCountrySpecific etc.
+    Language: "en-us"                # e.g., en-US, en-GB, de-DE, zh-cn etc. (use the LanguageCode)
+    Architecture: "x64"               # e.g., x64, ARM64
+    # --- Fields below are IGNORED when WindowsMode is Enabled ---
+    URL: null                         # Not used for web scraping
+    Extension: null                   # Not used for web scraping or AWK parsing
+    VersionMatch: null                # Not used (Edition/Lang/Arch are the exact match criteria)
+    HashMatch: null                   # Not used (SHA1 hash is extracted directly from the XML block)
+
   - Name: Debian 12 Netinst (Latest)
     Codename: Bookworm
     URL: https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/
@@ -24,22 +35,20 @@ distributions:
     VersionMatch: "" # Matches latest dir, effectively
     HashMatch: "CHECKSUM.SHA512-FreeBSD-14.2-RELEASE-amd64" # Note: This hash file name might need adjustment depending on latest release
 
+  - Name: Fedora Workstation (Latest)
+    URL: https://download.fedoraproject.org/pub/fedora/linux/releases/
+    Extension: 'Fedora-Workstation-Live-x86_64-*.iso'
+    VersionMatch: "" # Matches latest dir, effectively
+    HashMatch: "Fedora-Workstation-*-x86_64-CHECKSUM"
+    PathNavigation: ["Workstation", "x86_64", "iso"] # Sequence of directories to navigate after finding latest version
+
   - Name: Proxmox VE latest release
     URL: https://enterprise.proxmox.com/iso/ # Example structure might vary! Check actual mirror
     Extension: 'proxmox-ve*.iso'
     VersionMatch: "" # Matches latest dir, effectively
     HashMatch: "SHA256SUMS" # Note: This hash file name might need adjustment depending on latest release
 
-  - Name: Windows 11 Pro + Workstation (en-US, x64) # Your descriptive name for the result
-    WindowsMode: Enabled              # REQUIRED: Must be set to Enabled to trigger this logic
-    Edition: "ProfessionalWorkstation"          # e.g., Professional, Home, Enterprise, CoreCountrySpecific etc.
-    Language: "en-us"                # e.g., en-US, en-GB, de-DE, zh-cn etc. (use the LanguageCode)
-    Architecture: "x64"               # e.g., x64, ARM64
-    # --- Fields below are IGNORED when WindowsMode is Enabled ---
-    URL: null                         # Not used for web scraping
-    Extension: null                   # Not used for web scraping or AWK parsing
-    VersionMatch: null                # Not used (Edition/Lang/Arch are the exact match criteria)
-    HashMatch: null                   # Not used (SHA1 hash is extracted directly from the XML block)
+
 
   # Add more distributions following the pattern
   # - Name: Fedora Workstation
