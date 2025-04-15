@@ -35,20 +35,8 @@
         "version": "14.2",
         "size": 459491328
     },
-    "Fedora Workstation (Latest)": {
-        "url": "https://download.fedoraproject.org/pub/fedora/linux/releases/41/Workstation/x86_64/iso/Fedora-Workstation-Live-x86_64-41-1.4.iso",
-        "hash_type": "SHA256",
-        "hash_value": "a2dd3caf3224b8f3a640d9e31b1016d2a4e98a6d7cb435a1e2030235976d6da2",
-        "version": "1.4",
-        "size": 2458187776
-    },
-    "CentOS 10 Stream 2025-03-31": {
-        "url": "https://mirror.netsite.dk/centos-stream/10-stream/BaseOS/x86_64/iso/CentOS-Stream-10-20250331.0-x86_64-dvd1.iso",
-        "hash_type": "SHA256",
-        "hash_value": "2b90ea5a643c09cd915714ad77e176643d371d560e8102b4793a9d8621a26d8d",
-        "version": "20250331.0",
-        "size": 7602765824
-    },
+    "Fedora Workstation (Latest)": null,
+    "CentOS 10 Stream 2025-03-31": null,
     "Arch Linux (Latest)": {
         "url": "https://geo.mirror.pkgbuild.com/iso/latest/archlinux-x86_64.iso",
         "hash_type": "SHA256",
